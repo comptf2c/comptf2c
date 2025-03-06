@@ -25,6 +25,13 @@ bool g_GameInProgress = false;
 bool g_FirstRound = true;
 bool g_AllowMaptimeReset;
 bool g_PlayerTeam_Suppress = false;
+bool g_StopwatchEnabled; //if stopwatch is on
+bool g_StopwatchStored; //If stopwatch has a time stored. Records times for BLU if false, compares current BLU to stored times if true.
+int g_StopwatchFirstCount; //stopwatch ON: number of points capped by team attacking first
+int g_StopwatchFirstTime; //stopwatch ON: number of ticks for team attacking first to cap the last point they got
+int g_StopwatchSecondCount; //stopwatch ON: number of points capped by team attacking second
+int g_StopwatchSecondTime; //stopwatch ON: number of ticks for team attacking second to cap the last point they got
+int g_StopwatchStartTick; //stopwatch ON: tick that the current round started
 
 Handle g_GameStartTimer;
 Handle g_GameConf;
@@ -37,6 +44,7 @@ Address m_bResetRoundsPlayed;
 
 static ConVar s_ConVar_Restart;
 static ConVar s_ConVar_MaptimeReset;
+static ConVar s_ConVar_Stopwatch;
 
 //---------------------------------------------BUILT-IN FUNCTIONS---------------------------------------------
 
@@ -48,11 +56,23 @@ public void OnPluginStart()
 
 	s_ConVar_Restart = FindConVar("mp_restartgame");
 	s_ConVar_MaptimeReset = FindConVar("tf2c_allow_maptime_reset");
+	
+	s_ConVar_Stopwatch = CreateConVar(
+		"cc_stopwatch", "0",
+		"Whether to run stopwatch during rounds.\n\t0 - False\n\t1 - True",
+		_,
+		true, 0.0,
+		true, 1.0
+	);
+	s_ConVar_Stopwatch.AddChangeHook(conVarChanged_Stopwatch);
+	g_StopwatchEnabled = view_as<bool>(s_ConVar_Stopwatch.IntValue);
 
 	HookEvent("player_team", event_PlayerTeam_Pre, EventHookMode_Pre);
 	HookEvent("player_changeclass", event_Player_ChangeClass_Pre, EventHookMode_Pre);
 	HookEvent("teamplay_round_win", event_Round_Win_Post, EventHookMode_Post);
 	HookEvent("teamplay_round_start", event_Round_Start_Post, EventHookMode_Post);
+	HookEvent("teamplay_point_captured", event_Point_Captured_Post, EventHookMode_Post);
+	
 
 	g_GameConf = LoadGameConfigFile("classiccompetitive");
 
@@ -79,6 +99,10 @@ public void OnMapEnd()
 	g_Players = 0;
 	g_Readied = 0;
 	g_Vips = {0, 0, 0, 0};
+}
+
+static void conVarChanged_Stopwatch(ConVar convar, const char[] oldValue, const char[] newValue) {
+	g_StopwatchEnabled = StringToInt(newValue) ? true : false;
 }
 
 public void OnConfigsExecuted()
@@ -286,6 +310,38 @@ public Action event_Round_Win_Post(Event event, const char[] name, bool dontBroa
 {
 	g_GameInProgress = false;
 	g_FirstRound = false;
+	
+	if (g_StopwatchEnabled) {
+		// TODO: if stopwatch is stored, determine winner and clear stopwatch values
+			if (g_StopwatchStored) {
+				PrintToChatAll("Round over. Resetting Stopwatch.");
+			}
+			else {
+				PrintToChatAll("Team 1's time has been set. If Team 2 captures more points or captures the same number of points faster, Team 2 will win.");
+			}
+		//both sides of conditional swap regardless
+		g_StopwatchStored = !g_StopwatchStored;
+	}
+	
+	return Plugin_Continue;
+}
+
+public Action event_Point_Captured_Post(Event event, const char[] name, bool dontBroadcast) {
+	if (g_StopwatchEnabled) {
+		if (g_StopwatchStored) {
+				g_StopwatchSecondCount = event.GetInt("cp") + 1;
+				g_StopwatchSecondTime = GetGameTickCount() - g_StopwatchStartTick;
+				PrintToChatAll("[Stopwatch] Team 2 capped point %i in %i seconds (%i ticks)", g_StopwatchSecondCount, g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
+				if ((g_StopwatchSecondCount > g_StopwatchFirstCount) || (g_StopwatchFirstCount == g_StopwatchSecondCount && g_StopwatchSecondTime < g_StopwatchFirstTime)) {
+					PrintToChatAll("[Stopwatch] Team 2 wins! Team 1 capped %i points in %i seconds (%i ticks), Team 2 capped %i points in %i seconds (%i ticks)", g_StopwatchFirstCount, g_StopwatchFirstTime * 0.015, g_StopwatchFirstTime, g_StopwatchSecondCount, g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
+				}
+			}
+		else {
+			g_StopwatchFirstCount = event.GetInt("cp") + 1;
+			g_StopwatchFirstTime = GetGameTickCount() - g_StopwatchStartTick;
+			PrintToChatAll("[Stopwatch] Team 1 capped point %i in %i seconds (%i ticks)", g_StopwatchFirstCount, g_StopwatchFirstTime * 0.015, g_StopwatchFirstTime);
+		}
+	}
 	return Plugin_Continue;
 }
 
