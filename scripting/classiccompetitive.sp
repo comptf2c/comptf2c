@@ -332,7 +332,7 @@ public Action event_Point_Captured_Post(Event event, const char[] name, bool don
 		if (g_StopwatchStored) {
 				g_StopwatchSecondCount = event.GetInt("cp") + 1;
 				g_StopwatchSecondTime = GetGameTickCount() - g_StopwatchStartTick;
-				PrintToChatAll("[Stopwatch] Team 2 capped point %i in %i seconds (%i ticks)", g_StopwatchSecondCount, g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
+				PrintToChatAll("[Stopwatch] Team 2 capped point %i in %i seconds (%i ticks)", g_StopwatchSecondCount, RoundToFloor(g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
 				if ((g_StopwatchSecondCount > g_StopwatchFirstCount) || (g_StopwatchFirstCount == g_StopwatchSecondCount && g_StopwatchSecondTime < g_StopwatchFirstTime)) {
 					PrintToChatAll("[Stopwatch] Team 2 wins! Team 1 capped %i points in %i seconds (%i ticks), Team 2 capped %i points in %i seconds (%i ticks)", g_StopwatchFirstCount, g_StopwatchFirstTime * 0.015, g_StopwatchFirstTime, g_StopwatchSecondCount, g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
 				}
