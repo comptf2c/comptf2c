@@ -25,13 +25,13 @@ bool g_GameInProgress = false;
 bool g_FirstRound = true;
 bool g_AllowMaptimeReset;
 bool g_PlayerTeam_Suppress = false;
-bool g_StopwatchEnabled; //if stopwatch is on
-bool g_StopwatchStored; //If stopwatch has a time stored. Records times for BLU if false, compares current BLU to stored times if true.
-int g_StopwatchFirstCount; //stopwatch ON: number of points capped by team attacking first
-int g_StopwatchFirstTime; //stopwatch ON: number of ticks for team attacking first to cap the last point they got
-int g_StopwatchSecondCount; //stopwatch ON: number of points capped by team attacking second
-int g_StopwatchSecondTime; //stopwatch ON: number of ticks for team attacking second to cap the last point they got
-int g_StopwatchStartTick; //stopwatch ON: tick that the current round started
+bool g_StopwatchEnabled = false; //if stopwatch is on
+bool g_StopwatchStored = false; //If stopwatch has a time stored. Records times for BLU if false, compares current BLU to stored times if true.
+int g_StopwatchFirstCount = 0; //stopwatch ON: number of points capped by team attacking first
+int g_StopwatchFirstTime = 9999999; //stopwatch ON: number of ticks for team attacking first to cap the last point they got
+int g_StopwatchSecondCount = 0; //stopwatch ON: number of points capped by team attacking second
+int g_StopwatchSecondTime = 9999999; //stopwatch ON: number of ticks for team attacking second to cap the last point they got
+int g_StopwatchStartTick = 0; //stopwatch ON: tick that the current round started
 
 Handle g_GameStartTimer;
 Handle g_GameConf;
@@ -303,6 +303,7 @@ public Action event_Round_Start_Post(Event event, const char[] name, bool dontBr
 			}
 		}
 	}
+	g_StopwatchStartTick = GetGameTickCount();
 	return Plugin_Continue;
 }
 
