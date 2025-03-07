@@ -1,6 +1,7 @@
 #include <sourcemod>
 #include <tf2c>
 #include <sdktools>
+#include <multicolors>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -21,12 +22,14 @@ int g_Players = 0;				// Total voters connected. Doesn't include fake clients.
 int g_Readied = 0;				// Total number of "say rtv" votes
 bool g_Ready[MAXPLAYERS+1] = {false, ...};
 int g_Vips[4] = {0,...};
+bool g_IsVip[MAXPLAYERS+1] = {false, ...};
 bool g_GameInProgress = false;
 bool g_FirstRound = true;
 bool g_AllowMaptimeReset;
 bool g_PlayerTeam_Suppress = false;
 
-Handle g_GameStartTimer;
+Handle g_GameStartTimer = INVALID_HANDLE;
+Handle g_ReadyReminderTimer = INVALID_HANDLE;
 Handle g_GameConf;
 
 Address m_bResetTeamScores;
@@ -45,6 +48,7 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_ready", Command_Ready);
 	RegConsoleCmd("sm_unready", Command_Unready);
 	RegConsoleCmd("sm_unclass", Command_Unclass);
+	RegServerCmd("sm_display_unready", Command_DisplayUnreadyClients);
 
 	s_ConVar_Restart = FindConVar("mp_restartgame");
 	s_ConVar_MaptimeReset = FindConVar("tf2c_allow_maptime_reset");
@@ -99,9 +103,10 @@ public void OnClientDisconnect(int client)
     }
 
     int team = GetClientTeam(client);
-    if(team > 1 && g_Vips[team - 2] == client)
+    if(team > 1 && g_IsVip[client])
     {
 		SetTeamVIP(team, 0);
+		g_IsVip[client] = false;
     }
 
     if (g_Ready[client])
@@ -133,7 +138,27 @@ public Action event_Player_ChangeClass_Pre(Event event, const char[] name, bool 
 			{
 				if(!IsFakeClient(client))
 				{
-					PrintToChat(client, "Failed to become VIP, taken by %N", g_Vips[team-2]);
+					char teamcolour[16];
+					switch (team)
+					{
+						case 2:
+						{
+							strcopy(teamcolour, 16, "{red}");
+						}
+						case 3:
+						{
+							strcopy(teamcolour, 16, "{blue}");
+						}
+						case 4:
+						{
+							strcopy(teamcolour, 16, "{lightgreen}");
+						}
+						case 5:
+						{
+							strcopy(teamcolour, 16, "{gold}");
+						}
+					}
+					CPrintToChat(client, "Failed to become VIP, taken by %s%N", teamcolour, g_Vips[team-2]);
 				}
 				if(oldClass != TFClass_Civilian)
 				{
@@ -143,13 +168,12 @@ public Action event_Player_ChangeClass_Pre(Event event, const char[] name, bool 
 				{
 					TF2_SetPlayerClass(client, TFClass_Unknown, false, true);
 				}
-				return Plugin_Continue;
+				g_IsVip[client] = false;
+				return Plugin_Handled;
 			}
-			if(IsTeamEscorting(team))
-			{
-				SetTeamVIP(team, client);
-			}
-			else
+			g_IsVip[client] = true;
+			SetTeamVIP(team, client);
+			if(!IsTeamEscorting(team))
 			{
 				SetEntProp(client, Prop_Send, "m_iObserverMode", 5);
 				TF2_SetPlayerClass(client, TFClass_Unknown, false, true);
@@ -162,14 +186,14 @@ public Action event_Player_ChangeClass_Pre(Event event, const char[] name, bool 
 				ChangeClientTeam(client, 1);
 				ChangeClientTeam(client, team);
 				g_PlayerTeam_Suppress = false;
-				g_Vips[team - 2] = client;
 			}
 		}
 		else
 		{
-			if(g_Vips[team - 2] == client)
+			if(g_IsVip[client])
 			{
 				SetTeamVIP(team, 0);
+				g_IsVip[client] = false;
 			}
 		}
 	}
@@ -193,15 +217,14 @@ public Action event_PlayerTeam_Pre(Event event, const char[] name, bool dontBroa
 			bool toSpec = (team <= 1);
 			if(event.GetBool("silent"))
 			{
-				if(!fromSpec && g_Vips[oldTeam - 2] == client)
+				if(!fromSpec && g_IsVip[client])
 				{
-					g_Vips[oldTeam - 2] = 0;
 					if(!toSpec)
 					{
+						SetTeamVIP(team, client);
 						if(IsTeamEscorting(team))
 						{
 							TF2_SetPlayerClass(client, TFClass_Civilian, false, true);
-							SetTeamVIP(team, client);
 						}
 						else
 						{
@@ -215,8 +238,12 @@ public Action event_PlayerTeam_Pre(Event event, const char[] name, bool dontBroa
 							ChangeClientTeam(client, 1);
 							ChangeClientTeam(client, team);
 							g_PlayerTeam_Suppress = false;
-							g_Vips[team - 2] = client;
 						}
+					}
+					if(g_Vips[oldTeam - 2] == client)
+					{
+						SetEntProp(GetTeamEntity(oldTeam), Prop_Send, "m_iVIP", 0);
+						g_Vips[oldTeam - 2] = 0;
 					}
 				}
 			}
@@ -227,9 +254,10 @@ public Action event_PlayerTeam_Pre(Event event, const char[] name, bool dontBroa
 				{
 					UnreadyClient(client);
 				}
-				if(!fromSpec && g_Vips[oldTeam - 2] == client)
+				if(!fromSpec && g_IsVip[client])
 				{
 					SetTeamVIP(oldTeam, 0);
+					g_IsVip[client] = false;
 				}
 			}
 			if(!IsFakeClient(client))
@@ -263,20 +291,17 @@ public Action event_Round_Start_Post(Event event, const char[] name, bool dontBr
 			}
 		}
 	}
-	if(!g_GameInProgress)
+	if(g_Readied < g_Players && g_Players > 0)
 	{
+		g_GameInProgress = false;
 		ServerCommand("mp_tournament_restart");
-		bool result = AttemptStartGame();
-		if(!result)
+		if(g_FirstRound)
 		{
-			if(g_FirstRound)
-			{
-				PrintToChatAll("[SM] Round will start when players are ready");
-			}
-			else
-			{
-				PrintToChatAll("[SM] Game paused. Round will start when players are ready");
-			}
+			CPrintToChatAll("{yellow}Round will start when players are ready. {default}!ready to start");
+		}
+		else
+		{
+			CPrintToChatAll("{yellow}Game paused. Round will start when players are ready. {default}!ready to start");
 		}
 	}
 	return Plugin_Continue;
@@ -284,7 +309,10 @@ public Action event_Round_Start_Post(Event event, const char[] name, bool dontBr
 
 public Action event_Round_Win_Post(Event event, const char[] name, bool dontBroadcast)
 {
-	g_GameInProgress = false;
+	if(g_Readied == g_Players && g_Players > 0)
+	{
+		CPrintToChatAll("{yellow}All players ready! Continuing to next round. {default}!unready to cancel!");
+	}
 	g_FirstRound = false;
 	return Plugin_Continue;
 }
@@ -311,9 +339,10 @@ public Action Command_Unclass(int client, int args)
 	{
 		UnreadyClient(client);
 	}
-	if(team > 1 && g_Vips[team - 2] == client)
+	if(team > 1 && g_IsVip[client])
 	{
 		SetTeamVIP(team, 0);
+		g_IsVip[client] = false;
 	}
 
 	return Plugin_Handled;
@@ -340,7 +369,7 @@ public Action Command_Ready(int client, int args)
 
 	if (g_Ready[client])
 	{
-		ReplyToCommand(client, "[SM] Already readied up! [%i/%i] (use 'unready' to undo)", g_Readied, g_Players);
+		CReplyToCommand(client, "[SM] Already readied up! {lightgrey}[%i/%i] (use 'unready' to undo)", g_Readied, g_Players);
 		return Plugin_Handled;
 	}
 
@@ -379,10 +408,17 @@ public Action Command_Unready(int client, int args)
 	return Plugin_Handled;
 }
 
+public Action Command_DisplayUnreadyClients(int args)
+{
+	DisplayUnreadyClients();
+	return Plugin_Handled;
+}
+
 //---------------------------------------------TIMER FUNCTIONS-------------------------------------------------------
 
 public Action Timer_StartGame(Handle timer)
 {
+	g_GameStartTimer = INVALID_HANDLE;
 	if(g_FirstRound)
 	{
 		RestartGame();
@@ -391,7 +427,6 @@ public Action Timer_StartGame(Handle timer)
 	{
 		ContinueGame();
 	}
-	g_GameStartTimer = INVALID_HANDLE;
 	return Plugin_Continue;
 }
 
@@ -399,6 +434,13 @@ public Action Timer_DelayReady(Handle timer)
 {
 	g_ReadyAllowed = true;
 
+	return Plugin_Continue;
+}
+
+public Action Timer_ReadyReminder(Handle timer)
+{
+	g_ReadyReminderTimer = INVALID_HANDLE;
+	DisplayUnreadyClients();
 	return Plugin_Continue;
 }
 
@@ -441,19 +483,19 @@ void SetTeamVIP(int team, int client) {
 		{
 			case 2:
 			{
-				PrintToChatAll("RED no longer have a VIP");
+				CPrintToChatAll("Team {red}RED {default}no longer have a VIP");
 			}
 			case 3:
 			{
-				PrintToChatAll("BLU no longer have a VIP");
+				CPrintToChatAll("Team {blue}BLU {default}no longer have a VIP");
 			}
 			case 4:
 			{
-				PrintToChatAll("GRN no longer have a VIP");
+				CPrintToChatAll("Team {lightgreen}GRN {default}no longer have a VIP");
 			}
 			case 5:
 			{
-				PrintToChatAll("YLW no longer have a VIP");
+				CPrintToChatAll("Team {gold}YLW {default}no longer have a VIP");
 			}
 		}
 		return;
@@ -479,7 +521,29 @@ void ReadyClient(int client)
 	g_Readied++;
 	g_Ready[client] = true;
 
-	PrintToChatAll("[SM] %N is ready to go! [%i/%i]", client, g_Readied, g_Players);
+	char teamcolour[16];
+	int team = GetClientTeam(client);
+	switch (team)
+	{
+		case 2:
+		{
+			strcopy(teamcolour, 16, "{red}");
+		}
+		case 3:
+		{
+			strcopy(teamcolour, 16, "{blue}");
+		}
+		case 4:
+		{
+			strcopy(teamcolour, 16, "{lightgreen}");
+		}
+		case 5:
+		{
+			strcopy(teamcolour, 16, "{gold}");
+		}
+	}
+
+	CPrintToChatAll("%s%N {default}is ready to go! {lightgrey}[%i/%i]", teamcolour, client, g_Readied, g_Players);
 	AttemptStartGame();
 }
 
@@ -488,18 +552,103 @@ void UnreadyClient(int client)
 	g_Readied--;
 	g_Ready[client] = false;
 
-	PrintToChatAll("[SM] %N is no longer ready [%i/%i]", client, g_Readied, g_Players);
+	char teamcolour[16];
+	int team = GetClientTeam(client);
+	switch (team)
+	{
+		case 2:
+		{
+			strcopy(teamcolour, 16, "{red}");
+		}
+		case 3:
+		{
+			strcopy(teamcolour, 16, "{blue}");
+		}
+		case 4:
+		{
+			strcopy(teamcolour, 16, "{lightgreen}");
+		}
+		case 5:
+		{
+			strcopy(teamcolour, 16, "{gold}");
+		}
+	}
+
+	CPrintToChatAll("%s%N {default}is no longer ready {lightgrey}[%i/%i]", teamcolour, client, g_Readied, g_Players);
 	CancelStartGame();
+}
+
+void DisplayUnreadyClients()
+{
+	int unready = g_Players - g_Readied;
+	if(unready == 0)
+	{
+		return;
+	}
+	char prefix[32];
+	char playernames[1024];
+	int len_playernames = 0;
+	char suffix[32];
+	Format(prefix, 32, "%i players not ready:", unready);
+	for(int i = 1; i < MaxClients; i++)
+	{
+		if(IsClientInGame(i) && !g_Ready[i] && GetClientTeam(i) > 1 && !IsFakeClient(i))
+		{
+			char name[MAX_NAME_LENGTH];
+			GetClientName(i, name, MAX_NAME_LENGTH);
+			if(strlen(name) + 2 < 128 - len_playernames)
+			{
+				if(len_playernames != 0)
+				{
+					StrCat(playernames, 1024, "{default}, ");
+					len_playernames += 2;
+				}
+				int team = GetClientTeam(i);
+				switch (team)
+				{
+					case 2:
+					{
+						StrCat(playernames, 1024, "{red}");
+					}
+					case 3:
+					{
+						StrCat(playernames, 1024, "{blue}");
+					}
+					case 4:
+					{
+						StrCat(playernames, 1024, "{lightgreen}");
+					}
+					case 5:
+					{
+						StrCat(playernames, 1024, "{gold}");
+					}
+				}
+				StrCat(playernames, 1024, name);
+				unready -= 1;
+				len_playernames += strlen(name);
+			}
+		}
+	}
+	if(unready > 0)
+	{
+		Format(suffix, 32, "+ %i others", unready);
+	}
+	CPrintToChatAll("%s %s %s", prefix, playernames, suffix);
 }
 
 bool AttemptStartGame()
 {
+	if(g_ReadyReminderTimer != INVALID_HANDLE)
+	{
+		delete g_ReadyReminderTimer;
+	}
 	if(g_GameInProgress)
 	{
 		return false;
 	}
 	if (g_Readied < g_Players || g_Players <= 0)
 	{
+		g_ReadyReminderTimer = CreateTimer(5.0, Timer_ReadyReminder, _, TIMER_FLAG_NO_MAPCHANGE);
 		return false;
 	}
 	for(int i = 0; i < GetPlayTeamCount();i++)
@@ -508,12 +657,12 @@ bool AttemptStartGame()
 		{
 			if(GetTeamVIP(i + 2) == 0)
 			{
-				PrintToChatAll("[SM] All players ready but a team is missing a VIP.");
+				CPrintToChatAll("{yellow}All players ready but a team is missing a VIP.");
 				return false;
 			}
 		}
 	}
-	PrintToChatAll("[SM] All players ready! Starting the round in 5 seconds (unready to cancel)");
+	CPrintToChatAll("{yellow}All players ready! Starting the round in 5 seconds. {default}!unready to cancel");
 	g_GameStartTimer = CreateTimer(5.0, Timer_StartGame, _, TIMER_FLAG_NO_MAPCHANGE);
 	g_GameInProgress = true;
 	return true;
@@ -526,18 +675,19 @@ void CancelStartGame()
 		if(g_GameStartTimer != INVALID_HANDLE)
 		{
 			delete g_GameStartTimer;
-			PrintToChatAll("[SM] Round start cancelled");
+			CPrintToChatAll("{yellow}Round start cancelled");
+			g_GameInProgress = false;
 		}
 		else if(IsInSetup())
 		{
-			PrintToChatAll("[SM] Round start cancelled during setup");
+			CPrintToChatAll("{yellow}Round start cancelled during setup");
 			ServerCommand("mp_tournament_restart");
+			g_GameInProgress = false;
 		}
 		else
 		{
-			PrintToChatAll("[SM] Game will pause after this round");
+			CPrintToChatAll("{yellow}Game will pause after this round");
 		}
-		g_GameInProgress = false;
 	}
 }
 
