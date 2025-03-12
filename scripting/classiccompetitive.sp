@@ -78,7 +78,7 @@ public void OnPluginStart()
 	HookEvent("teamplay_point_captured", event_Point_Captured_Post, EventHookMode_Post);
 	
 
-	g_GameConf = LoadGameConfigFile("classiccompetitive");
+	//g_GameConf = LoadGameConfigFile("classiccompetitive");
 
 	OnMapEnd();
 
@@ -149,7 +149,7 @@ public Action event_Player_ChangeClass_Pre(Event event, const char[] name, bool 
 	int team = GetClientTeam(client);
 	if(class != oldClass)
 	{
-		if (g_Ready[client])
+		if (g_Ready[client] && !g_GameInProgress)
 		{
 			UnreadyClient(client);
 		}
@@ -343,10 +343,18 @@ public Action event_Round_Win_Post(Event event, const char[] name, bool dontBroa
 	if (g_StopwatchEnabled) {
 		// TODO: if stopwatch is stored, determine winner and clear stopwatch values
 			if (g_StopwatchStored) {
-				PrintToChatAll("Round over. Resetting Stopwatch.");
+				CPrintToChatAll("{paleturquoise}Resetting Stopwatch.");
+				if ((g_StopwatchSecondCount < g_StopwatchFirstCount) || (g_StopwatchFirstCount == g_StopwatchSecondCount && g_StopwatchSecondTime > g_StopwatchFirstTime)){
+					int stopwatchSecondTimeSecs = RoundToFloor(g_StopwatchSecondTime * 0.015);
+					int stopwatchFirstTimeSecs = RoundToFloor(g_StopwatchFirstTime * 0.015);
+					CPrintToChatAll("{red}Team 1{paleturquoise} wins! {red}Team 1{paleturquoise} capped %i points in %i seconds {lightgrey}(%i ticks), {blue}Team 2{paleturquoise} capped %i points in %i seconds {lightgrey}(%i ticks)", g_StopwatchFirstCount, stopwatchFirstTimeSecs, g_StopwatchFirstTime, g_StopwatchSecondCount, stopwatchSecondTimeSecs, g_StopwatchSecondTime);
+				}
 			}
 			else {
-				PrintToChatAll("Team 1's time has been set. If Team 2 captures more points or captures the same number of points faster, Team 2 will win.");
+				if(g_StopwatchFirstCount == 0){
+					g_StopwatchFirstTime = GetGameTickCount() - g_StopwatchStartTick;
+				}
+				CPrintToChatAll("{blue}Team 1{paleturquoise}'s time has been set. If {red}Team 2 {paleturquoise}captures more points or captures the same number of points faster, {red}Team 2 {paleturquoise}will win.");
 			}
 		//both sides of conditional swap regardless
 		g_StopwatchStored = !g_StopwatchStored;
@@ -360,17 +368,20 @@ public Action event_Point_Captured_Post(Event event, const char[] name, bool don
 		if (g_StopwatchStored) {
 				g_StopwatchSecondCount = event.GetInt("cp") + 1;
 				g_StopwatchSecondTime = GetGameTickCount() - g_StopwatchStartTick;
-				int stopwatchSecondTimeSecs = RoundToFloor(g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
-				int stopwatchFirstTimeSecs = RoundToFloor(g_StopwatchSecondTime * 0.015, g_StopwatchSecondTime);
-				PrintToChatAll("[Stopwatch] Team 2 capped point %i in %i seconds (%i ticks)", g_StopwatchSecondCount, stopwatchSecondTimeSecs, g_StopwatchSecondTime);
+				int stopwatchSecondTimeSecs = RoundToFloor(g_StopwatchSecondTime * 0.015);
+				int stopwatchFirstTimeSecs = RoundToFloor(g_StopwatchFirstTime * 0.015);
+				CPrintToChatAll("{blue}Team 2 {paleturquoise}capped point %i in %i seconds {lightgrey}(%i ticks)", g_StopwatchSecondCount, stopwatchSecondTimeSecs, g_StopwatchSecondTime);
 				if ((g_StopwatchSecondCount > g_StopwatchFirstCount) || (g_StopwatchFirstCount == g_StopwatchSecondCount && g_StopwatchSecondTime < g_StopwatchFirstTime)) {
-					PrintToChatAll("[Stopwatch] Team 2 wins! Team 1 capped %i points in %i seconds (%i ticks), Team 2 capped %i points in %i seconds (%i ticks)", g_StopwatchFirstCount, stopwatchFirstTimeSecs, g_StopwatchFirstTime, g_StopwatchSecondCount, stopwatchSecondTimeSecs, g_StopwatchSecondTime);
+					CPrintToChatAll("{blue}Team 2{paleturquoise} wins! {red}Team 1{paleturquoise} capped %i points in %i seconds {lightgrey}(%i ticks), {blue}Team 2{paleturquoise} capped %i points in %i seconds {lightgrey}(%i ticks)", g_StopwatchFirstCount, stopwatchFirstTimeSecs, g_StopwatchFirstTime, g_StopwatchSecondCount, stopwatchSecondTimeSecs, g_StopwatchSecondTime);
+
+					//force a BLU win here!
 				}
 			}
 		else {
 			g_StopwatchFirstCount = event.GetInt("cp") + 1;
 			g_StopwatchFirstTime = GetGameTickCount() - g_StopwatchStartTick;
-			PrintToChatAll("[Stopwatch] Team 1 capped point %i in %i seconds (%i ticks)", g_StopwatchFirstCount, stopwatchFirstTimeSecs, g_StopwatchFirstTime);
+			int stopwatchFirstTimeSecs = RoundToFloor(g_StopwatchFirstTime * 0.015);
+			CPrintToChatAll("{blue}Team 1{paleturquoise} capped point %i in %i seconds {lightgrey}(%i ticks)", g_StopwatchFirstCount, stopwatchFirstTimeSecs, g_StopwatchFirstTime);
 		}
 	}
 	return Plugin_Continue;
@@ -394,7 +405,7 @@ public Action Command_Unclass(int client, int args)
 	g_PlayerTeam_Suppress = false;
 	ClientCommand(client, "changeclass");
 
-	if (g_Ready[client])
+	if (g_Ready[client] && !g_GameInProgress)
 	{
 		UnreadyClient(client);
 	}
