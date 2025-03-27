@@ -1,0 +1,4 @@
+exec cc_base
+
+mp_timelimit 20
+mp_winlimit 7

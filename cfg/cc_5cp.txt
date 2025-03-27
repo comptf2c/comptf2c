@@ -1,0 +1,3 @@
+exec cc_base
+
+mp_timelimit 30
