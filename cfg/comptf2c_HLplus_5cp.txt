@@ -1,4 +1,4 @@
-exec comptf2c.cfg
+exec comptf2c
 
 tf2c_allow_special_classes 3		//enable civilian, even in VIP maps
 
