@@ -1,0 +1,7 @@
+exec comptf2c
+
+tf2c_allow_special_classes 3		//enable civilian, even in VIPR maps
+
+mp_winlimit 0
+mp_windifference 5
+mp_timelimit 30
