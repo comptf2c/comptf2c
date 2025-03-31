@@ -1,4 +1,0 @@
-exec cc_base
-
-mp_maxrounds 2
-cc_stopwatch 1
