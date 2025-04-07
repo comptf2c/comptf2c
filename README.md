@@ -1,1 +1,1 @@
-The required SM server plugin and config pack to run an official game with CompTF2C ruleset and settings.
+The required SM server plugin, config pack and the vscript to run an official game with CompTF2C ruleset and settings.
