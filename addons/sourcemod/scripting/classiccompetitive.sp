@@ -9,7 +9,7 @@
 public Plugin myinfo =
 {
 	name = "Classic Competitive",
-	author = "Jaws",
+	author = "Jaws, and gwonam",
 	description = "Some tweaks to TF2 Classic to facilitate competitive play",
 	version = "1.1",
 	url = ""
