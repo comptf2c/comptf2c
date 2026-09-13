@@ -1,0 +1,11 @@
+exec etf2l_6v6_koth
+
+mp_winlimit 3
+tf2c_domination_comeback -1         //Total Domination ("comeback") set to map default
+
+mp_tournament_restart
+
+exec ctf2c
+
+say 6s DOM config has been loaded.
+say ------------------------------------------------------------------
