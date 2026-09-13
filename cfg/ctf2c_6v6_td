@@ -14,6 +14,6 @@ mp_tournament_restart
 
 exec ctf2c
 
-say HL VIPR config has been loaded.
+say 6s VIPR config has been loaded.
 say ------------------------------------------------------------------
 say It is highly recommended that you enter tf_hud_show_servertimelimit 1 in the developer console for the best experience
