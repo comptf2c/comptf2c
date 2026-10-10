@@ -1,0 +1,18 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"3.0.1"
+		}
+		
+		"Notes"	"Changes in 3.0.1:"
+		"Notes"	"- Fix array out of bounds error for TF2C classes"
+	}
+	
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/logstf.smx"
+	}
+}
